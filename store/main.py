@@ -11,6 +11,9 @@ from sqlalchemy import (
     String,
     Float,
     DateTime,
+    insert,
+    update,
+    delete,
 )
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql import select
@@ -118,7 +121,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: int):
 async def send_data_to_subscribers(user_id: int, data):
     if user_id in subscriptions:
         for websocket in subscriptions[user_id]:
-            await websocket.send_json(json.dumps(data))
+            await websocket.send_json(data)
 
 
 # FastAPI CRUDL endpoints
@@ -128,7 +131,33 @@ async def send_data_to_subscribers(user_id: int, data):
 async def create_processed_agent_data(data: List[ProcessedAgentData]):
     # Insert data to database
     # Send data to subscribers
-    pass
+    rows = [
+        {
+            "road_state": item.road_state,
+            "user_id": item.agent_data.user_id,
+            "x": item.agent_data.accelerometer.x,
+            "y": item.agent_data.accelerometer.y,
+            "z": item.agent_data.accelerometer.z,
+            "latitude": item.agent_data.gps.latitude,
+            "longitude": item.agent_data.gps.longitude,
+            "timestamp": item.agent_data.timestamp,
+        }
+        for item in data
+    ]
+
+    with SessionLocal() as session:
+        inserted_rows = []
+        for row in rows:
+            result = session.execute(
+                insert(processed_agent_data).values(**row).returning(processed_agent_data)
+            )
+            inserted_rows.append(result.mappings().one())
+        session.commit()
+
+    for row in inserted_rows:
+        await send_data_to_subscribers(row["user_id"], dict(row))
+
+    return [ProcessedAgentDataInDB(**row) for row in inserted_rows]
 
 
 @app.get(
@@ -137,13 +166,28 @@ async def create_processed_agent_data(data: List[ProcessedAgentData]):
 )
 def read_processed_agent_data(processed_agent_data_id: int):
     # Get data by id
-    pass
+    with SessionLocal() as session:
+        result = session.execute(
+            select(processed_agent_data).where(
+                processed_agent_data.c.id == processed_agent_data_id
+            )
+        )
+        row = result.mappings().first()
+
+    if row is None:
+        raise HTTPException(status_code=404, detail="Processed agent data not found")
+
+    return ProcessedAgentDataInDB(**row)
 
 
 @app.get("/processed_agent_data/", response_model=list[ProcessedAgentDataInDB])
 def list_processed_agent_data():
     # Get list of data
-    pass
+    with SessionLocal() as session:
+        result = session.execute(select(processed_agent_data))
+        rows = result.mappings().all()
+
+    return [ProcessedAgentDataInDB(**row) for row in rows]
 
 
 @app.put(
@@ -152,7 +196,31 @@ def list_processed_agent_data():
 )
 def update_processed_agent_data(processed_agent_data_id: int, data: ProcessedAgentData):
     # Update data
-    pass
+    values = {
+        "road_state": data.road_state,
+        "user_id": data.agent_data.user_id,
+        "x": data.agent_data.accelerometer.x,
+        "y": data.agent_data.accelerometer.y,
+        "z": data.agent_data.accelerometer.z,
+        "latitude": data.agent_data.gps.latitude,
+        "longitude": data.agent_data.gps.longitude,
+        "timestamp": data.agent_data.timestamp,
+    }
+
+    with SessionLocal() as session:
+        result = session.execute(
+            update(processed_agent_data)
+            .where(processed_agent_data.c.id == processed_agent_data_id)
+            .values(**values)
+            .returning(processed_agent_data)
+        )
+        row = result.mappings().first()
+        session.commit()
+
+    if row is None:
+        raise HTTPException(status_code=404, detail="Processed agent data not found")
+
+    return ProcessedAgentDataInDB(**row)
 
 
 @app.delete(
@@ -161,7 +229,19 @@ def update_processed_agent_data(processed_agent_data_id: int, data: ProcessedAge
 )
 def delete_processed_agent_data(processed_agent_data_id: int):
     # Delete by id
-    pass
+    with SessionLocal() as session:
+        result = session.execute(
+            delete(processed_agent_data)
+            .where(processed_agent_data.c.id == processed_agent_data_id)
+            .returning(processed_agent_data)
+        )
+        row = result.mappings().first()
+        session.commit()
+
+    if row is None:
+        raise HTTPException(status_code=404, detail="Processed agent data not found")
+
+    return ProcessedAgentDataInDB(**row)
 
 
 if __name__ == "__main__":
