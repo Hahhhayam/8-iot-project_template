@@ -1,13 +1,19 @@
 from app.entities.agent_data import AgentData
 from app.entities.processed_agent_data import ProcessedAgentData
 
-GRAVITY_BASELINE = 16500
+INITIAL_GRAVITY_BASELINE = 16500
+current_gravity_baseline = INITIAL_GRAVITY_BASELINE
 BUMP_THRESHOLD = 1000
 POTHOLE_THRESHOLD = 4000
 
 
 def _classify_road_state(z_axis_value: float) -> str:
-    deviation = abs(abs(z_axis_value) - GRAVITY_BASELINE)
+    global current_gravity_baseline
+
+    current_z = abs(z_axis_value)
+    deviation = abs(current_z - current_gravity_baseline)
+    current_gravity_baseline = current_z
+
     if deviation >= POTHOLE_THRESHOLD:
         return "pothole"
     if deviation >= BUMP_THRESHOLD:

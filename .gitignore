@@ -4,3 +4,4 @@ hub/docker/mosquitto/data/mosquitto.db
 hub/docker/mosquitto/log/mosquitto.log
 edge/docker/mosquitto/data/mosquitto.db
 edge/docker/mosquitto/log/mosquitto.log
+MapView/cache

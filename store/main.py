@@ -1,7 +1,9 @@
 import asyncio
 import json
+from collections import defaultdict
 from typing import Set, Dict, List, Any
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Body
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import (
     create_engine,
     MetaData,
@@ -121,7 +123,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: int):
 async def send_data_to_subscribers(user_id: int, data):
     if user_id in subscriptions:
         for websocket in subscriptions[user_id]:
-            await websocket.send_json(data)
+            await websocket.send_json(jsonable_encoder(data))
 
 
 # FastAPI CRUDL endpoints
@@ -154,8 +156,12 @@ async def create_processed_agent_data(data: List[ProcessedAgentData]):
             inserted_rows.append(result.mappings().one())
         session.commit()
 
+    rows_by_user = defaultdict(list)
     for row in inserted_rows:
-        await send_data_to_subscribers(row["user_id"], dict(row))
+        rows_by_user[row["user_id"]].append(dict(row))
+
+    for user_id, user_rows in rows_by_user.items():
+        await send_data_to_subscribers(user_id, user_rows)
 
     return [ProcessedAgentDataInDB(**row) for row in inserted_rows]
 
